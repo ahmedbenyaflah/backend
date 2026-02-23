@@ -1757,9 +1757,11 @@ def search_logs(
         rejection_message = None
         rejection_log_lines: list[str] = []
         success_log_lines: list[str] = []
-        if hit.get("local_delivery_success"):
+        dequeuer_line_text = (hit.get("dequeuer_line") or "")
+        is_discarded_without_processing = "message discarded without processing" in dequeuer_line_text.lower()
+        if hit.get("local_delivery_success") and not is_discarded_without_processing:
             success_message = "Delivered to local mailbox"
-            success_log_lines = [hit.get("dequeuer_line", "")] if hit.get("dequeuer_line") else []
+            success_log_lines = [dequeuer_line_text] if dequeuer_line_text else []
         elif qid and qid in success_by_queue_id:
             mapped_folder_str, success_message, success_log_lines = success_by_queue_id[qid]
         elif qid and qid in rejection_by_queue_id:
@@ -1783,8 +1785,13 @@ def search_logs(
             "success_log_lines": success_log_lines,
             "errorMessage": rejection_message or "",
             "errorLine": rejection_log_lines[0] if rejection_log_lines else "",
-            # Treat anything without a confirmed delivery as rejected (not pending).
-            "status": "Success" if (success_message or hit.get("local_delivery_success")) else "Rejected",
+            # Treat lines with "message discarded without processing" as Pending (yellow),
+            # otherwise anything without a confirmed delivery is Rejected (not pending).
+            "status": "Pending"
+            if is_discarded_without_processing
+            else "Success"
+            if (success_message or hit.get("local_delivery_success"))
+            else "Rejected",
             "date": hit.get("timestamp", ""),
             "direction": "Sent",
         }
